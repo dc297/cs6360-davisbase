@@ -419,7 +419,7 @@ public class DavisBase {
 		
 	}
     
-public static void parseIndexString(String createString) {
+public static void parseIndex(String createString) {
 		
 		System.out.println("STUB: Calling your method to process the command");
 		System.out.println("Parsing the string:\"" + createString + "\"");
