@@ -222,6 +222,11 @@ public class Table{
 
 	public static void createTable(String table, String[] col){
 		try{	
+			String[] new_col = new String[col.length+1];
+			new_col[0] = "rowid INT UNIQUE";
+			for(int i=0;i<col.length;i++) {
+				new_col[i+1] = col[i];
+			}
 			
 			RandomAccessFile file = new RandomAccessFile(dir_userdata+table+".tbl", "rw");
 			file.setLength(pageSize);
@@ -265,7 +270,10 @@ public class Table{
 				if(keys[i]>l)
 					l = keys[i];
 			file.close();
-
+			
+			String[] cur_row_id_value = {"10", "davisbase_tables","cur_row_id","INT","3","NO","NO"};		
+			insertInto("davisbase_columns",cur_row_id_value,dir_catalog);			//add current row_id column to davisbase_columns
+			
 			for(int i = 0; i < col.length; i++){
 				l = l + 1;
 				String[] token = col[i].split(" ");
