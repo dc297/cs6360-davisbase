@@ -1,3 +1,4 @@
+
 import java.io.RandomAccessFile;
 import java.io.File;
 import java.util.ArrayList;
@@ -198,7 +199,6 @@ public static void initialize() {
 			tablesCatalog.writeBytes("davisbase_columns");
 			
 			tablesCatalog.close();
-		
 		}
 		catch (Exception e) {
 			System.out.println(e);
@@ -387,6 +387,8 @@ public static void initialize() {
 			
 			columnsCatalog.close();
 			
+			String[] cur_row_id_value = {"10", "davisbase_tables","cur_row_id","INT","3","NO","NO"};		
+			Table.insertInto("davisbase_columns",cur_row_id_value,dir_catalog + "/");			//add current row_id column to davisbase_columns
 		}
 		catch (Exception e) {
 			System.out.println(e);
@@ -522,7 +524,7 @@ public static void initialize() {
 		String[] cols = {"table_name"};
 		String[] cmptr = new String[0];
 		//Table.select(table, cols, cmptr,dir_catalog+"/");
-		Table.select(table, cols, cmptr, true);
+		Table.select(table, cols, cmptr,true);
 	}
 	
     public static void parseCreateString(String createString) {
@@ -558,9 +560,10 @@ public static void initialize() {
 		String table = tokens[2];
 		String[] temp = insertString.split("values");
 		String temporary=temp[1].trim();
-		String[] insert_vals = temporary.substring(1, temporary.length()-1).split(",");
-		for(int i = 0; i < insert_vals.length; i++)
-			insert_vals[i] = insert_vals[i].trim();
+		String[] insert_vals_init = temporary.substring(1, temporary.length()-1).split(",");
+		String[] insert_vals = new String[insert_vals_init.length + 1];
+		for(int i = 1; i <= insert_vals_init.length; i++)
+			insert_vals[i] = insert_vals_init[i-1].trim();
 	
 		if(!tableExists(table)){
 			System.out.println("Table "+table+" does not exist.");
@@ -614,7 +617,7 @@ public static void initialize() {
 		}
 		else
 		{
-			Table.update(table, cmp, set);
+			Table.update(table, cmp, set, dir_userdata);
 		}
 		
 	}
@@ -651,7 +654,7 @@ public static void initialize() {
 		}
 		else
 		{
-		    Table.select(tableName, column, cmp, true);
+		    Table.select(tableName, column, cmp,true);
 		}
 	}
 	
