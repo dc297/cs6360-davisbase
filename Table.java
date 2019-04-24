@@ -4,6 +4,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map.Entry;
 import java.util.Date;
 import java.text.SimpleDateFormat;
 
@@ -321,7 +322,6 @@ public class Table{
 			
 			if(!"rowid".equals(cmp[0])) {
 				//get the rowids to be updated
-				System.out.println("Found the following records:");
 				Records records = select(table, new String[] {"*"}, cmp, false);
 				rowids.addAll(records.content.keySet());
 			}
@@ -409,14 +409,19 @@ public class Table{
 				pages = p;
 		}
 		
-		int[] keys = BPlusTree.getKeyArray(file, pages);
-		int l = 0;
-		for(int i = 0; i < keys.length; i++)
-			if(keys[i]>l)
-				l = keys[i];
+		int rowId = 0;
+		if("davisbase_tables".equals(table) || "davisbase_columns".equals(table)) {
+			int[] keys = BPlusTree.getKeyArray(file, pages);
+			for(int i = 0; i < keys.length; i++)
+				if(keys[i]>rowId)
+					rowId = keys[i];
+		}
+		else {
+			Records rowIdRecords = select("davisbase_tables", new String[]{"cur_row_id"}, new String[]{"table_name", "=", table}, false);
+			rowId = Integer.parseInt(rowIdRecords.content.entrySet().iterator().next().getValue()[2]);
+		}
 		
-		if (values[0].isEmpty())
-			values[0]=String.valueOf(l+1);
+		values[0]=String.valueOf(rowId + 1);
 
 		for(int i = 0; i < nullable.length; i++)
 			if(values[i].equals("null") && nullable[i].equals("NO")){
@@ -486,6 +491,13 @@ public class Table{
 		}else{
 			BPlusTree.splitLeaf(file, page);
 			insertInto(file, table, values);
+		}
+		
+		if(!"davisbase_tables".equals(table) && !"davisbase_columns".equals(table)) {
+			update("davisbase_tables", 
+					new String[] {"table_name", "=", table}, 
+					new String[] {"cur_row_id", "=", String.valueOf(values[0])}, 
+					dir_catalog);
 		}
 	}
 
