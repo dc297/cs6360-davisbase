@@ -221,8 +221,8 @@ public class Table{
 	}
 
 	public static void createTable(String table, String[] col){
-		try{	
-			String[] new_col = new String[col.length+1];
+		try{			
+			String[] new_col = new String[col.length+1];	// adding rowid as the first column
 			new_col[0] = "rowid INT UNIQUE";
 			for(int i=0;i<col.length;i++) {
 				new_col[i+1] = col[i];
@@ -251,7 +251,7 @@ public class Table{
 					l = keys[i];
 			file.close();
 			
-			String[] values = {Integer.toString(l+1), table};
+			String[] values = {Integer.toString(l+1), table, String.valueOf(0)};
 			insertInto("davisbase_tables", values,dir_catalog);
 
 			file = new RandomAccessFile(dir_catalog+"davisbase_columns.tbl", "rw");
@@ -271,12 +271,10 @@ public class Table{
 					l = keys[i];
 			file.close();
 			
-			String[] cur_row_id_value = {"10", "davisbase_tables","cur_row_id","INT","3","NO","NO"};		
-			insertInto("davisbase_columns",cur_row_id_value,dir_catalog);			//add current row_id column to davisbase_columns
-			
-			for(int i = 0; i < col.length; i++){
+						
+			for(int i = 0; i < new_col.length; i++){
 				l = l + 1;
-				String[] token = col[i].split(" ");
+				String[] token = new_col[i].split(" ");
 				String col_name = token[0];
 				String dt = token[1].toUpperCase();
 				String pos = Integer.toString(i+1);
@@ -297,13 +295,25 @@ public class Table{
 				String[] value = {Integer.toString(l), table, col_name, dt, pos, nullable, unique};
 				insertInto("davisbase_columns", value,dir_catalog);
 			}
-	
+			
+//			String[] temp_cmp = new String[3];
+//			temp_cmp[0] = "rowid";
+//			temp_cmp[1] = "=";
+//			temp_cmp[2] = Integer.toString(3);
+//			
+//			String[] temp_set = new String[3];
+//			temp_set[0] = "cur_row_id";
+//			temp_set[1] = "=";
+//			temp_set[2] = Integer.toString(0);
+			
+			//update("davisbase_tables",temp_cmp,temp_set,dir_catalog);
+
 		}catch(Exception e){
 			System.out.println(e);
 		}
 	}
 
-	public static void update(String table, String[] cmp, String[] set){
+	public static void update(String table, String[] cmp, String[] set, String dir){
 		try{
 			
 			//int key = new Integer(cmp[2]);
@@ -319,13 +329,14 @@ public class Table{
 				rowids.add(Integer.parseInt(cmp[2]));
 			
 			for(int key : rowids) {
-				RandomAccessFile file = new RandomAccessFile(dir_userdata+table+".tbl", "rw");
+				RandomAccessFile file = new RandomAccessFile(dir+table+".tbl", "rw");
 				int numPages = pages(file);
 				int page = 0;
-				for(int p = 1; p <= numPages; p++)
+				for(int p = 1; p <= numPages; p++) {
 					if(BPlusTree.hasKey(file, p, key)&BPlusTree.getPageType(file, p)==0x0D){
 						page = p;
 					}
+				}
 				
 				if(page==0)
 				{
@@ -455,6 +466,10 @@ public class Table{
 		if(page != 0)
 			if(BPlusTree.hasKey(file, page, key)){
 				System.out.println("Uniqueness constraint violation");
+				System.out.println("for");
+				for(int k=0;k<values.length;k++)
+				System.out.println(values[k]);
+				
 				return;
 			}
 		if(page == 0)
