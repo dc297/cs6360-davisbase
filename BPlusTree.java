@@ -9,50 +9,86 @@ public class BPlusTree{
 	public static String dir_catalog = "data/catalog/";
 	public static String dir_userdata = "data/user_data/";
 
-	
 	public static short calPayloadSize(String[] values, String[] dataType){
 		int val = dataType.length; 
 		for(int i = 1; i < dataType.length; i++){
 			String dt = dataType[i];
-			switch(dt){
+			
+			if(dt.equals("TINYINT")) {
+				val += 1;
+			}
+			else if(dt.equals("SMALLINT")) {
+				val += 2;
+			}
+			else if(dt.equals("INT") || dt.equals("REAL")) {
+				val += 4;
+			}
+			else if(dt.equals("BIGINT") || dt.equals("DOUBLE") || dt.equals("DATETIME") || dt.equals("DATE")) {
+				val += 8;
+			}
+			else if(dt.equals("TEXT")) {
+				String text = values[i];
+				int len = text.length();
+				val += len;
+			}
+			
+			/*switch(dt){
 				case "TINYINT":
-					val = val + 1;
+					val += 1;
 					break;
 				case "SMALLINT":
-					val = val + 2;
+					val += 2;
 					break;
 				case "INT":
-					val = val + 4;
+					val += 4;
 					break;
 				case "BIGINT":
-					val = val + 8;
+					val += 8;
 					break;
 				case "REAL":
-					val = val + 4;
+					val += 4;
 					break;		
 				case "DOUBLE":
-					val = val + 8;
+					val += 8;
 					break;
 				case "DATETIME":
-					val = val + 8;
+					val += 8;
 					break;
 				case "DATE":
-					val = val + 8;
+					val += 8;
 					break;
 				case "TEXT":
 					String text = values[i];
 					int len = text.length();
-					val = val + len;
+					val += len;
 					break;
 				default:
 					break;
-			}
+			}*/
 		}
 		return (short)val;
 	}
-
-	public static int makeInteriorPage(RandomAccessFile file){
+	
+	
+	public static int makePage(RandomAccessFile file, int b) {
 		int num_pages = 0;
+		try{
+			num_pages = (int)(file.length()/(new Long(pageSize)));
+			num_pages = num_pages + 1;
+			file.setLength(pageSize * num_pages);
+			file.seek((num_pages-1)*pageSize);
+			file.writeByte(b); 
+		}catch(Exception e){
+			System.out.println(e);
+		}
+
+		return num_pages;
+	}
+	
+	public static int makeInteriorPage(RandomAccessFile file){
+		return makePage(file, 0x05);
+		
+		/*int num_pages = 0;
 		try{
 			num_pages = (int)(file.length()/(new Long(pageSize)));
 			num_pages = num_pages + 1;
@@ -63,11 +99,13 @@ public class BPlusTree{
 			System.out.println(e);
 		}
 
-		return num_pages;
+		return num_pages;*/
 	}
 
 	public static int makeLeafPage(RandomAccessFile file){
-		int num_pages = 0;
+		return makePage(file, 0x0D);
+		
+		/*int num_pages = 0;
 		try{
 			num_pages = (int)(file.length()/(new Long(pageSize)));
 			num_pages = num_pages + 1;
@@ -78,8 +116,7 @@ public class BPlusTree{
 			System.out.println(e);
 		}
 
-		return num_pages;
-
+		return num_pages;*/
 	}
 
 	public static int findMidKey(RandomAccessFile file, int page){
@@ -91,17 +128,26 @@ public class BPlusTree{
 			int mid = (int) Math.ceil((double) numCells / 2);
 			long loc = getCellLoc(file, page, mid-1);
 			file.seek(loc);
-
-			switch(pageType){
-				case 0x05:
-					file.readInt(); 
-					val = file.readInt();
-					break;
-				case 0x0D:
-					file.readShort();
-					val = file.readInt();
-					break;
+			
+			if(pageType == 0x05) {
+				file.readInt(); 
+				val = file.readInt();
 			}
+			else if(pageType == 0x0D){
+				file.readShort();
+				val = file.readInt();
+			}
+			
+			/*switch(pageType){
+			case 0x05:
+				file.readInt(); 
+				val = file.readInt();
+				break;
+			case 0x0D:
+				file.readShort();
+				val = file.readInt();
+				break;
+			}*/
 
 		}catch(Exception e){
 			System.out.println(e);
@@ -219,14 +265,33 @@ public class BPlusTree{
 			System.out.println(e);
 		}
 	}
-
+	
+	public static Integer split(RandomAccessFile file, int page, int newPage, int midKey, int parent) {
+		if(parent == 0){
+			int rootPage = makeInteriorPage(file);
+			setParent(file, page, rootPage);
+			setParent(file, newPage, rootPage);
+			setRightMost(file, rootPage, newPage);
+			insertInteriorCell(file, rootPage, page, midKey);
+			
+			return rootPage;
+		}else{
+			long ploc = getPointerLoc(file, page, parent);
+			setPointerLoc(file, ploc, parent, newPage);
+			insertInteriorCell(file, parent, page, midKey);
+			sortCellArray(file, parent);
+			
+			return parent;
+		}
+		
+	}
 	
 	public static void splitLeaf(RandomAccessFile file, int page){
 		int newPage = makeLeafPage(file);
 		int midKey = findMidKey(file, page);
 		splitLeafPage(file, page, newPage);
 		int parent = getParent(file, page);
-		if(parent == 0){
+		/*if(parent == 0){
 			int rootPage = makeInteriorPage(file);
 			setParent(file, page, rootPage);
 			setParent(file, newPage, rootPage);
@@ -240,6 +305,13 @@ public class BPlusTree{
 			while(checkInteriorSpace(file, parent)){
 				parent = splitInterior(file, parent);
 			}
+		}*/
+		
+		split(file, page, newPage, midKey, parent);
+		if(parent!=0) {
+			while(checkInteriorSpace(file, parent)){
+				parent = splitInterior(file, parent);
+			}
 		}
 	}
 
@@ -248,7 +320,7 @@ public class BPlusTree{
 		int midKey = findMidKey(file, page);
 		splitInteriorPage(file, page, newPage);
 		int parent = getParent(file, page);
-		if(parent == 0){
+		/*if(parent == 0){
 			int rootPage = makeInteriorPage(file);
 			setParent(file, page, rootPage);
 			setParent(file, newPage, rootPage);
@@ -261,28 +333,42 @@ public class BPlusTree{
 			insertInteriorCell(file, parent, page, midKey);
 			sortCellArray(file, parent);
 			return parent;
-		}
+		}*/
+		return split(file, page, newPage, midKey, parent);
 	}
 
+	public static void swap(int[] arr, int i, int j) {
+		int temp = arr[i];
+		arr[i] = arr[j];
+		arr[j] = temp;
+	}
+	
+	public static void swap(short[] arr, int i, int j) {
+		short temp = arr[i];
+		arr[i] = arr[j];
+		arr[j] = temp;
+	}
 	
 	public static void sortCellArray(RandomAccessFile file, int page){
 		 byte num = getCellNumber(file, page);
 		 int[] keyArray = getKeyArray(file, page);
 		 short[] cellArray = getCellArray(file, page);
-		 int ltmp;
-		 short rtmp;
+		 //int ltmp;
+		 //short rtmp;
 
 		 for (int i = 1; i < num; i++) {
             for(int j = i ; j > 0 ; j--){
                 if(keyArray[j] < keyArray[j-1]){
 
-                    ltmp = keyArray[j];
+                	swap(keyArray, j, j-1);
+                	/*ltmp = keyArray[j];
                     keyArray[j] = keyArray[j-1];
-                    keyArray[j-1] = ltmp;
-
-                    rtmp = cellArray[j];
+                    keyArray[j-1] = ltmp;*/
+                	
+                	swap(cellArray, j, j-1);
+                    /*rtmp = cellArray[j];
                     cellArray[j] = cellArray[j-1];
-                    cellArray[j-1] = rtmp;
+                    cellArray[j-1] = rtmp;*/
                 }
             }
          }
@@ -305,7 +391,15 @@ public class BPlusTree{
 			file.seek((page-1)*pageSize);
 			byte pageType = file.readByte();
 			byte offset = 0;
-			switch(pageType){
+			
+			if(pageType == 0x05) {
+				offset = 4;
+			}
+			else {
+				offset = 2;
+			}
+			
+			/*switch(pageType){
 			    case 0x0d:
 				    offset = 2;
 				    break;
@@ -315,7 +409,7 @@ public class BPlusTree{
 				default:
 					offset = 2;
 					break;
-			}
+			}*/
 
 			for(int i = 0; i < num; i++){
 				long loc = getCellLoc(file, page, i);
@@ -408,10 +502,10 @@ public class BPlusTree{
 			System.out.println(e);
 		}
 	}
-
+		
 	public static void insertLeafCell(RandomAccessFile file, int page, int offset, short plsize, int key, byte[] stc, String[] vals){
 		try{
-			String s;
+			/*String s;
 			file.seek((page-1)*pageSize+offset);
 			file.writeShort(plsize);
 			file.writeInt(key);
@@ -468,7 +562,9 @@ public class BPlusTree{
 						file.writeBytes(vals[i]);
 						break;
 				}
-			}
+			}*/
+			updateLeafCell(file, page, offset, plsize, key, stc, vals);
+			
 			int n = getCellNumber(file, page);
 			byte tmp = (byte) (n+1);
 			setCellNumber(file, page, tmp);
