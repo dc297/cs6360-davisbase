@@ -4,11 +4,7 @@ import java.util.Date;
 import java.text.SimpleDateFormat;
 
 public class BPlusTree{
-	public static int pageSize = 512;
-	public static final String datePattern = "yyyy-MM-dd_HH:mm:ss";
-	public static String dir_catalog = "data/catalog/";
-	public static String dir_userdata = "data/user_data/";
-
+	
 	public static short calPayloadSize(String[] values, String[] dataType){
 		int val = dataType.length; 
 		for(int i = 1; i < dataType.length; i++){
@@ -32,39 +28,6 @@ public class BPlusTree{
 				val += len;
 			}
 			
-			/*switch(dt){
-				case "TINYINT":
-					val += 1;
-					break;
-				case "SMALLINT":
-					val += 2;
-					break;
-				case "INT":
-					val += 4;
-					break;
-				case "BIGINT":
-					val += 8;
-					break;
-				case "REAL":
-					val += 4;
-					break;		
-				case "DOUBLE":
-					val += 8;
-					break;
-				case "DATETIME":
-					val += 8;
-					break;
-				case "DATE":
-					val += 8;
-					break;
-				case "TEXT":
-					String text = values[i];
-					int len = text.length();
-					val += len;
-					break;
-				default:
-					break;
-			}*/
 		}
 		return (short)val;
 	}
@@ -73,10 +36,10 @@ public class BPlusTree{
 	public static int makePage(RandomAccessFile file, int b) {
 		int num_pages = 0;
 		try{
-			num_pages = (int)(file.length()/(new Long(pageSize)));
+			num_pages = (int)(file.length()/(new Long(Constants.pageSize)));
 			num_pages = num_pages + 1;
-			file.setLength(pageSize * num_pages);
-			file.seek((num_pages-1)*pageSize);
+			file.setLength(Constants.pageSize * num_pages);
+			file.seek((num_pages-1)*Constants.pageSize);
 			file.writeByte(b); 
 		}catch(Exception e){
 			System.out.println(e);
@@ -86,69 +49,32 @@ public class BPlusTree{
 	}
 	
 	public static int makeInteriorPage(RandomAccessFile file){
-		return makePage(file, 0x05);
-		
-		/*int num_pages = 0;
-		try{
-			num_pages = (int)(file.length()/(new Long(pageSize)));
-			num_pages = num_pages + 1;
-			file.setLength(pageSize * num_pages);
-			file.seek((num_pages-1)*pageSize);
-			file.writeByte(0x05); 
-		}catch(Exception e){
-			System.out.println(e);
-		}
-
-		return num_pages;*/
+		return makePage(file, Constants.SHORTINT);	
 	}
 
 	public static int makeLeafPage(RandomAccessFile file){
-		return makePage(file, 0x0D);
-		
-		/*int num_pages = 0;
-		try{
-			num_pages = (int)(file.length()/(new Long(pageSize)));
-			num_pages = num_pages + 1;
-			file.setLength(pageSize * num_pages);
-			file.seek((num_pages-1)*pageSize);
-			file.writeByte(0x0D); 
-		}catch(Exception e){
-			System.out.println(e);
-		}
-
-		return num_pages;*/
+		return makePage(file, Constants.recordsPage);
 	}
 
 	public static int findMidKey(RandomAccessFile file, int page){
 		int val = 0;
 		try{
-			file.seek((page-1)*pageSize);
+			file.seek((page-1)*Constants.pageSize);
 			byte pageType = file.readByte();
 			int numCells = getCellNumber(file, page);
 			int mid = (int) Math.ceil((double) numCells / 2);
 			long loc = getCellLoc(file, page, mid-1);
 			file.seek(loc);
 			
-			if(pageType == 0x05) {
+			if(pageType == Constants.SHORTINT) {
 				file.readInt(); 
 				val = file.readInt();
 			}
-			else if(pageType == 0x0D){
+			else if(pageType == Constants.recordsPage){
 				file.readShort();
 				val = file.readInt();
 			}
 			
-			/*switch(pageType){
-			case 0x05:
-				file.readInt(); 
-				val = file.readInt();
-				break;
-			case 0x0D:
-				file.readShort();
-				val = file.readInt();
-				break;
-			}*/
-
 		}catch(Exception e){
 			System.out.println(e);
 		}
@@ -176,18 +102,18 @@ public class BPlusTree{
 				file.seek(loc);
 				byte[] cell = new byte[cellSize];
 				file.read(cell);
-				file.seek((newPage-1)*pageSize+content);
+				file.seek((newPage-1)*Constants.pageSize+content);
 				file.write(cell);
 				setCellOffset(file, newPage, i - numCellA, content);
 			}
 
 			
-			file.seek((newPage-1)*pageSize+2);
+			file.seek((newPage-1)*Constants.pageSize+2);
 			file.writeShort(content);
 
 			
 			short offset = getCellOffset(file, curPage, numCellA-1);
-			file.seek((curPage-1)*pageSize+2);
+			file.seek((curPage-1)*Constants.pageSize+2);
 			file.writeShort(offset);
 
 			
@@ -229,7 +155,7 @@ public class BPlusTree{
 				file.seek(loc);
 				byte[] cell = new byte[cellSize];
 				file.read(cell);
-				file.seek((newPage-1)*pageSize+content);
+				file.seek((newPage-1)*Constants.pageSize+content);
 				file.write(cell);
 				file.seek(loc);
 				int page = file.readInt();
@@ -245,11 +171,11 @@ public class BPlusTree{
 			tmp = file.readInt();
 			setRightMost(file, curPage, tmp);
 			
-			file.seek((newPage-1)*pageSize+2);
+			file.seek((newPage-1)*Constants.pageSize+2);
 			file.writeShort(content);
 			
 			short offset = getCellOffset(file, curPage, numCellA-1);
-			file.seek((curPage-1)*pageSize+2);
+			file.seek((curPage-1)*Constants.pageSize+2);
 			file.writeShort(offset);
 
 			
@@ -291,22 +217,7 @@ public class BPlusTree{
 		int midKey = findMidKey(file, page);
 		splitLeafPage(file, page, newPage);
 		int parent = getParent(file, page);
-		/*if(parent == 0){
-			int rootPage = makeInteriorPage(file);
-			setParent(file, page, rootPage);
-			setParent(file, newPage, rootPage);
-			setRightMost(file, rootPage, newPage);
-			insertInteriorCell(file, rootPage, page, midKey);
-		}else{
-			long ploc = getPointerLoc(file, page, parent);
-			setPointerLoc(file, ploc, parent, newPage);
-			insertInteriorCell(file, parent, page, midKey);
-			sortCellArray(file, parent);
-			while(checkInteriorSpace(file, parent)){
-				parent = splitInterior(file, parent);
-			}
-		}*/
-		
+				
 		split(file, page, newPage, midKey, parent);
 		if(parent!=0) {
 			while(checkInteriorSpace(file, parent)){
@@ -320,20 +231,7 @@ public class BPlusTree{
 		int midKey = findMidKey(file, page);
 		splitInteriorPage(file, page, newPage);
 		int parent = getParent(file, page);
-		/*if(parent == 0){
-			int rootPage = makeInteriorPage(file);
-			setParent(file, page, rootPage);
-			setParent(file, newPage, rootPage);
-			setRightMost(file, rootPage, newPage);
-			insertInteriorCell(file, rootPage, page, midKey);
-			return rootPage;
-		}else{
-			long ploc = getPointerLoc(file, page, parent);
-			setPointerLoc(file, ploc, parent, newPage);
-			insertInteriorCell(file, parent, page, midKey);
-			sortCellArray(file, parent);
-			return parent;
-		}*/
+		
 		return split(file, page, newPage, midKey, parent);
 	}
 
@@ -353,28 +251,18 @@ public class BPlusTree{
 		 byte num = getCellNumber(file, page);
 		 int[] keyArray = getKeyArray(file, page);
 		 short[] cellArray = getCellArray(file, page);
-		 //int ltmp;
-		 //short rtmp;
-
+		 
 		 for (int i = 1; i < num; i++) {
             for(int j = i ; j > 0 ; j--){
                 if(keyArray[j] < keyArray[j-1]){
-
-                	swap(keyArray, j, j-1);
-                	/*ltmp = keyArray[j];
-                    keyArray[j] = keyArray[j-1];
-                    keyArray[j-1] = ltmp;*/
-                	
-                	swap(cellArray, j, j-1);
-                    /*rtmp = cellArray[j];
-                    cellArray[j] = cellArray[j-1];
-                    cellArray[j-1] = rtmp;*/
+                	swap(keyArray, j, j-1);                	
+                	swap(cellArray, j, j-1);                   
                 }
             }
          }
 
          try{
-         	file.seek((page-1)*pageSize+12);
+         	file.seek((page-1)*Constants.pageSize+12);
          	for(int i = 0; i < num; i++){
 				file.writeShort(cellArray[i]);
 			}
@@ -388,29 +276,17 @@ public class BPlusTree{
 		int[] array = new int[num];
 
 		try{
-			file.seek((page-1)*pageSize);
+			file.seek((page-1)*Constants.pageSize);
 			byte pageType = file.readByte();
 			byte offset = 0;
 			
-			if(pageType == 0x05) {
+			if(pageType == Constants.SHORTINT) {
 				offset = 4;
 			}
 			else {
 				offset = 2;
 			}
 			
-			/*switch(pageType){
-			    case 0x0d:
-				    offset = 2;
-				    break;
-				case 0x05:
-					offset = 4;
-					break;
-				default:
-					offset = 2;
-					break;
-			}*/
-
 			for(int i = 0; i < num; i++){
 				long loc = getCellLoc(file, page, i);
 				file.seek(loc+offset);
@@ -429,7 +305,7 @@ public class BPlusTree{
 		short[] array = new short[num];
 
 		try{
-			file.seek((page-1)*pageSize+12);
+			file.seek((page-1)*Constants.pageSize+12);
 			for(int i = 0; i < num; i++){
 				array[i] = file.readShort();
 			}
@@ -463,7 +339,7 @@ public class BPlusTree{
 	public static void setPointerLoc(RandomAccessFile file, long loc, int parent, int page){
 		try{
 			if(loc == 0){
-				file.seek((parent-1)*pageSize+4);
+				file.seek((parent-1)*Constants.pageSize+4);
 			}else{
 				file.seek(loc);
 			}
@@ -477,7 +353,7 @@ public class BPlusTree{
 	public static void insertInteriorCell(RandomAccessFile file, int page, int child, int key){
 		try{
 			
-			file.seek((page-1)*pageSize+2);
+			file.seek((page-1)*Constants.pageSize+2);
 			short content = file.readShort();
 			
 			if(content == 0)
@@ -485,11 +361,11 @@ public class BPlusTree{
 			
 			content = (short)(content - 8);
 			
-			file.seek((page-1)*pageSize+content);
+			file.seek((page-1)*Constants.pageSize+content);
 			file.writeInt(child);
 			file.writeInt(key);
 			
-			file.seek((page-1)*pageSize+2);
+			file.seek((page-1)*Constants.pageSize+2);
 			file.writeShort(content);
 			
 			byte num = getCellNumber(file, page);
@@ -505,75 +381,17 @@ public class BPlusTree{
 		
 	public static void insertLeafCell(RandomAccessFile file, int page, int offset, short plsize, int key, byte[] stc, String[] vals){
 		try{
-			/*String s;
-			file.seek((page-1)*pageSize+offset);
-			file.writeShort(plsize);
-			file.writeInt(key);
-			int col = vals.length - 1;
-			file.writeByte(col);
-			file.write(stc);
-			for(int i = 1; i < vals.length; i++){
-				switch(stc[i-1]){
-					case 0x00:
-						file.writeByte(0);
-						break;
-					case 0x01:
-						file.writeShort(0);
-						break;
-					case 0x02:
-						file.writeInt(0);
-						break;
-					case 0x03:
-						file.writeLong(0);
-						break;
-					case 0x04:
-						file.writeByte(new Byte(vals[i]));
-						break;
-					case 0x05:
-						file.writeShort(new Short(vals[i]));
-						break;
-					case 0x06:
-						file.writeInt(new Integer(vals[i]));
-						break;
-					case 0x07:
-						file.writeLong(new Long(vals[i]));
-						break;
-					case 0x08:
-						file.writeFloat(new Float(vals[i]));
-						break;
-					case 0x09:
-						file.writeDouble(new Double(vals[i]));
-						break;
-					case 0x0A:
-						s = vals[i];
-						Date temp = new SimpleDateFormat(datePattern).parse(s.substring(1, s.length()-1));
-						long time = temp.getTime();
-						file.writeLong(time);
-						break;
-					case 0x0B:
-						s = vals[i];
-						s = s.substring(1, s.length()-1);
-						s = s+"_00:00:00";
-						Date temp2 = new SimpleDateFormat(datePattern).parse(s);
-						long time2 = temp2.getTime();
-						file.writeLong(time2);
-						break;
-					default:
-						file.writeBytes(vals[i]);
-						break;
-				}
-			}*/
 			updateLeafCell(file, page, offset, plsize, key, stc, vals);
 			
 			int n = getCellNumber(file, page);
 			byte tmp = (byte) (n+1);
 			setCellNumber(file, page, tmp);
-			file.seek((page-1)*pageSize+12+n*2);
+			file.seek((page-1)*Constants.pageSize+12+n*2);
 			file.writeShort(offset);
-			file.seek((page-1)*pageSize+2);
+			file.seek((page-1)*Constants.pageSize+2);
 			int content = file.readShort();
 			if(content >= offset || content == 0){
-				file.seek((page-1)*pageSize+2);
+				file.seek((page-1)*Constants.pageSize+2);
 				file.writeShort(offset);
 			}
 		}catch(Exception e){
@@ -584,7 +402,7 @@ public class BPlusTree{
 	public static void updateLeafCell(RandomAccessFile file, int page, int offset, int plsize, int key, byte[] stc, String[] vals){
 		try{
 			String s;
-			file.seek((page-1)*pageSize+offset);
+			file.seek((page-1)*Constants.pageSize+offset);
 			file.writeShort(plsize);
 			file.writeInt(key);
 			int col = vals.length - 1;
@@ -592,47 +410,47 @@ public class BPlusTree{
 			file.write(stc);
 			for(int i = 1; i < vals.length; i++){
 				switch(stc[i-1]){
-					case 0x00:
+					case Constants.NULL:
 						file.writeByte(0);
 						break;
-					case 0x01:
+					case Constants.SHORTNULL:
 						file.writeShort(0);
 						break;
-					case 0x02:
+					case Constants.INTNULL:
 						file.writeInt(0);
 						break;
-					case 0x03:
+					case Constants.LONGNULL:
 						file.writeLong(0);
 						break;
-					case 0x04:
+					case Constants.TINYINT:
 						file.writeByte(new Byte(vals[i]));
 						break;
-					case 0x05:
+					case Constants.SHORTINT:
 						file.writeShort(new Short(vals[i]));
 						break;
-					case 0x06:
+					case Constants.INT:
 						file.writeInt(new Integer(vals[i]));
 						break;
-					case 0x07:
+					case Constants.LONG:
 						file.writeLong(new Long(vals[i]));
 						break;
-					case 0x08:
+					case Constants.FLOAT:
 						file.writeFloat(new Float(vals[i]));
 						break;
-					case 0x09:
+					case Constants.DOUBLE:
 						file.writeDouble(new Double(vals[i]));
 						break;
-					case 0x0A:
+					case Constants.DATETIME:
 						s = vals[i];
-						Date temp = new SimpleDateFormat(datePattern).parse(s.substring(1, s.length()-1));
+						Date temp = new SimpleDateFormat(Constants.datePattern).parse(s.substring(1, s.length()-1));
 						long time = temp.getTime();
 						file.writeLong(time);
 						break;
-					case 0x0B:
+					case Constants.DATE:
 						s = vals[i];
 						s = s.substring(1, s.length()-1);
 						s = s+"_00:00:00";
-						Date temp2 = new SimpleDateFormat(datePattern).parse(s);
+						Date temp2 = new SimpleDateFormat(Constants.datePattern).parse(s);
 						long time2 = temp2.getTime();
 						file.writeLong(time2);
 						break;
@@ -659,10 +477,10 @@ public class BPlusTree{
 		int val = -1;
 
 		try{
-			file.seek((page-1)*pageSize+2);
+			file.seek((page-1)*Constants.pageSize+2);
 			int content = file.readShort();
 			if(content == 0)
-				return pageSize - size;
+				return Constants.pageSize - size;
 			int numCells = getCellNumber(file, page);
 			int space = content - 20 - 2*numCells;
 			if(size < space)
@@ -680,7 +498,7 @@ public class BPlusTree{
 		int val = 0;
 
 		try{
-			file.seek((page-1)*pageSize+8);
+			file.seek((page-1)*Constants.pageSize+8);
 			val = file.readInt();
 		}catch(Exception e){
 			System.out.println(e);
@@ -691,7 +509,7 @@ public class BPlusTree{
 
 	public static void setParent(RandomAccessFile file, int page, int parent){
 		try{
-			file.seek((page-1)*pageSize+8);
+			file.seek((page-1)*Constants.pageSize+8);
 			file.writeInt(parent);
 		}catch(Exception e){
 			System.out.println(e);
@@ -702,7 +520,7 @@ public class BPlusTree{
 		int rl = 0;
 
 		try{
-			file.seek((page-1)*pageSize+4);
+			file.seek((page-1)*Constants.pageSize+4);
 			rl = file.readInt();
 		}catch(Exception e){
 			System.out.println("Error at getRightMost");
@@ -714,7 +532,7 @@ public class BPlusTree{
 	public static void setRightMost(RandomAccessFile file, int page, int rightLeaf){
 
 		try{
-			file.seek((page-1)*pageSize+4);
+			file.seek((page-1)*Constants.pageSize+4);
 			file.writeInt(rightLeaf);
 		}catch(Exception e){
 			System.out.println("Error at setRightMost");
@@ -733,9 +551,9 @@ public class BPlusTree{
 	public static long getCellLoc(RandomAccessFile file, int page, int id){
 		long loc = 0;
 		try{
-			file.seek((page-1)*pageSize+12+id*2);
+			file.seek((page-1)*Constants.pageSize+12+id*2);
 			short offset = file.readShort();
-			long orig = (page-1)*pageSize;
+			long orig = (page-1)*Constants.pageSize;
 			loc = orig + offset;
 		}catch(Exception e){
 			System.out.println(e);
@@ -747,7 +565,7 @@ public class BPlusTree{
 		byte val = 0;
 
 		try{
-			file.seek((page-1)*pageSize+1);
+			file.seek((page-1)*Constants.pageSize+1);
 			val = file.readByte();
 		}catch(Exception e){
 			System.out.println(e);
@@ -758,7 +576,7 @@ public class BPlusTree{
 
 	public static void setCellNumber(RandomAccessFile file, int page, byte num){
 		try{
-			file.seek((page-1)*pageSize+1);
+			file.seek((page-1)*Constants.pageSize+1);
 			file.writeByte(num);
 		}catch(Exception e){
 			System.out.println(e);
@@ -768,7 +586,7 @@ public class BPlusTree{
 	public static short getCellOffset(RandomAccessFile file, int page, int id){
 		short offset = 0;
 		try{
-			file.seek((page-1)*pageSize+12+id*2);
+			file.seek((page-1)*Constants.pageSize+12+id*2);
 			offset = file.readShort();
 		}catch(Exception e){
 			System.out.println(e);
@@ -778,7 +596,7 @@ public class BPlusTree{
 
 	public static void setCellOffset(RandomAccessFile file, int page, int id, int offset){
 		try{
-			file.seek((page-1)*pageSize+12+id*2);
+			file.seek((page-1)*Constants.pageSize+12+id*2);
 			file.writeShort(offset);
 		}catch(Exception e){
 			System.out.println(e);
@@ -786,9 +604,9 @@ public class BPlusTree{
 	}
     
 	public static byte getPageType(RandomAccessFile file, int page){
-		byte type=0x05;
+		byte type=Constants.SHORTINT;
 		try {
-			file.seek((page-1)*pageSize);
+			file.seek((page-1)*Constants.pageSize);
 			type = file.readByte();
 		} catch (Exception e) {
 			System.out.println(e);
