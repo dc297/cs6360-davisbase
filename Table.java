@@ -3,137 +3,99 @@ import java.io.RandomAccessFile;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
-import java.util.Map.Entry;
 import java.util.Date;
 import java.text.SimpleDateFormat;
 
 public class Table{
 	
-	public static int pageSize = 512;
-	public static String datePattern = "yyyy-MM-dd_HH:mm:ss";
-	public static String dir_catalog = "data/catalog/";
-	public static String dir_userdata = "data/user_data/";
+	public static int numRecords;
 	
-	public static int no_of_records;
-	
-	public static int pages(RandomAccessFile file){
-		int num_pages = 0;
+	public static int getPageCount(RandomAccessFile file){
+		int numPages = 0;
 		try{
-			num_pages = (int)(file.length()/(new Long(pageSize)));
-		}catch(Exception e){
+			numPages = (int)(file.length()/((long)(Constants.pageSize)));
+		}
+		catch(Exception e){
 			System.out.println(e);
 		}
 
-		return num_pages;
+		return numPages;
 	}
 
 	public static void drop(String table){
 		try{
+			delete(Constants.TABLE_CATALOG, new String[] {"table_name", "=", table}, Constants.dirCatalog);
+			delete(Constants.COLUMN_CATALOG, new String[] {"table_name", "=", table}, Constants.dirCatalog);
+
+			File oldFile = new File(Constants.dirUserdata, table+".tbl"); 
+			oldFile.delete();
 			
-			RandomAccessFile file = new RandomAccessFile(dir_catalog+"davisbase_tables.tbl", "rw");
-			int numOfPages = pages(file);
-			for(int page = 1; page <= numOfPages; page ++){
-				file.seek((page-1)*pageSize);
-				byte fileType = file.readByte();
-				if(fileType == 0x0D)
-				{
-					short[] cellsAddr = BPlusTree.getCellArray(file, page);
-					int k = 0;
-					for(int i = 0; i < cellsAddr.length; i++)
-					{
-						long loc = BPlusTree.getCellLoc(file, page, i);
-						String[] vals = retrieveValues(file, loc);
-						String tb = vals[1];
-						if(!tb.equals(table))
-						{
-							BPlusTree.setCellOffset(file, page, k, cellsAddr[i]);
-							k++;
-						}
-					}
-					BPlusTree.setCellNumber(file, page, (byte)k);
-				}
-				else
-					continue;
-			}
-
-			file = new RandomAccessFile(dir_catalog+"davisbase_columns.tbl", "rw");
-			numOfPages = pages(file);
-			for(int page = 1; page <= numOfPages; page ++){
-				file.seek((page-1)*pageSize);
-				byte fileType = file.readByte();
-				if(fileType == 0x0D)
-				{
-					short[] cellsAddr = BPlusTree.getCellArray(file, page);
-					int k = 0;
-					for(int i = 0; i < cellsAddr.length; i++)
-					{
-						long loc = BPlusTree.getCellLoc(file, page, i);
-						String[] vals = retrieveValues(file, loc);
-						String tb = vals[1];
-						if(!tb.equals(table))
-						{
-							BPlusTree.setCellOffset(file, page, k, cellsAddr[i]);
-							k++;
-						}
-					}
-					BPlusTree.setCellNumber(file, page, (byte)k);
-				}
-				else
-					continue;
-			}
-
-			File anOldFile = new File(dir_userdata, table+".tbl"); 
-			anOldFile.delete();
 		}catch(Exception e){
 			System.out.println(e);
 		}
 
 	}
     
-	public static void delete(String table, String[] cmp){
+	public static void delete(String table, String[] cmp, String dir){
 		try{
-		ArrayList<Integer> rowids = new ArrayList<Integer>();
-		
-		if(!"rowid".equals(cmp[0])) {
-			//get the rowids to be updated
-			Records records = select(table, new String[] {"*"}, cmp, false);
-			rowids.addAll(records.content.keySet());
-		}
-		else
-			rowids.add(Integer.parseInt(cmp[2]));
-		
-		for(int key : rowids) {
-			RandomAccessFile file = new RandomAccessFile(dir_userdata+table+".tbl", "rw");
-			int numPages = pages(file);
-			int page = 0;
-			for(int p = 1; p <= numPages; p++)
-				if(BPlusTree.hasKey(file, p, key)&BPlusTree.getPageType(file, p)==0x0D){
-					page = p;
-					break;
-				}
+			ArrayList<Integer> rowIds = new ArrayList<Integer>();
 			
-			if(page==0)
-			{
-				System.out.println("The given key value does not exist");
-				return;
+			if(cmp.length==0 || !"rowid".equals(cmp[0])) {
+				//get the rowids to be updated
+				Records records = select(table, new String[] {"*"}, cmp, false);
+				rowIds.addAll(records.content.keySet());
 			}
+			else
+				//we already have a rowid, just add it to the list
+				rowIds.add(Integer.parseInt(cmp[2]));
 			
-			short[] cellsAddr = BPlusTree.getCellArray(file, page);
-			int k = 0;
-			for(int i = 0; i < cellsAddr.length; i++)
-			{
-				long loc = BPlusTree.getCellLoc(file, page, i);
-				String[] vals = retrieveValues(file, loc);
-				int x = new Integer(vals[0]);
-				if(x!=key)
+			for(int rowId : rowIds) {
+				//open the file for table
+				RandomAccessFile file = new RandomAccessFile(dir+table+".tbl", "rw");
+				int numPages = getPageCount(file);
+				int page = 0;
+				
+				//find the page where data is located
+				for(int currPage = 1; currPage <= numPages; currPage++)
+					if(BPlusTree.hasKey(file, currPage, rowId) && BPlusTree.getPageType(file, currPage)==Constants.recordsPage){
+						page = currPage;
+						break;
+					}
+				
+				//if not found return error
+				if(page==0)
 				{
-					BPlusTree.setCellOffset(file, page, k, cellsAddr[i]);
-					k++;
+					System.out.println("Oops! Data not found in table.");
+					return;
 				}
+				
+				//get all the cells on that page
+				short[] cells = BPlusTree.getCellArray(file, page);
+				int k = 0;
+				
+				//iterate over all the cells
+				for(int cellNum = 0; cellNum < cells.length; cellNum++)
+				{
+					//get location for current cell
+					long currLoc = BPlusTree.getCellLoc(file, page, cellNum);
+					
+					//retrieve all the values
+					String[] values = retrieveValues(file, currLoc);
+					
+					//get the current row id
+					int currRowId = Integer.parseInt(values[0]);
+					
+					//if not current row id, move the cell
+					if(currRowId != rowId)
+					{
+						BPlusTree.setCellOffset(file, page, k, cells[cellNum]);
+						k++;
+					}
+				}
+				
+				//change cell number
+				BPlusTree.setCellNumber(file, page, (byte)k);
 			}
-			BPlusTree.setCellNumber(file, page, (byte)k);
-		}
 		
 		}catch(Exception e)
 		{
@@ -142,71 +104,81 @@ public class Table{
 		
 	}
 	
+	//method used to retrieve values from a certain location in the file
 	public static String[] retrieveValues(RandomAccessFile file, long loc){
 		
 		String[] values = null;
 		try{
 			
-			SimpleDateFormat dateFormat = new SimpleDateFormat (datePattern);
+			SimpleDateFormat dateFormat = new SimpleDateFormat (Constants.datePattern);
 
 			file.seek(loc+2);
-			int key = file.readInt();
-			int num_cols = file.readByte();
+			int rowId = file.readInt();
+			int numCols = file.readByte();
 			
-			byte[] stc = new byte[num_cols];
-			file.read(stc);
+			byte[] typeCode = new byte[numCols];
+			file.read(typeCode);
 			
-			values = new String[num_cols+1];
+			values = new String[numCols+1];
 			
-			values[0] = Integer.toString(key);
+			values[0] = Integer.toString(rowId);
 			
-			for(int i=1; i <= num_cols; i++){
-				switch(stc[i-1]){
-					case 0x00:  file.readByte();
-					            values[i] = "null";
-								break;
+			for(int i=1; i <= numCols; i++){
+				switch(typeCode[i-1]){
+					case Constants.NULL:  file.readByte();
+					    values[i] = "null";
+						break;
 
-					case 0x01:  file.readShort();
-					            values[i] = "null";
-								break;
+					case Constants.SHORTNULL:  file.readShort();
+					    values[i] = "null";
+						break;
 
-					case 0x02:  file.readInt();
-					            values[i] = "null";
-								break;
+					case Constants.INTNULL:  file.readInt();
+					    values[i] = "null";
+						break;
 
-					case 0x03:  file.readLong();
-					            values[i] = "null";
-								break;
+					case Constants.LONGNULL:  file.readLong();
+					    values[i] = "null";
+						break;
 
-					case 0x04:  values[i] = Integer.toString(file.readByte());
-								break;
+					case Constants.TINYINT:  
+						values[i] = Integer.toString(file.readByte());
+						break;
 
-					case 0x05:  values[i] = Integer.toString(file.readShort());
-								break;
+					case Constants.SHORTINT:  
+						values[i] = Integer.toString(file.readShort());
+						break;
 
-					case 0x06:  values[i] = Integer.toString(file.readInt());
-								break;
+					case Constants.INT:  
+						values[i] = Integer.toString(file.readInt());
+						break;
 
-					case 0x07:  values[i] = Long.toString(file.readLong());
-								break;
+					case Constants.LONG:  
+						values[i] = Long.toString(file.readLong());
+						break;
 
-					case 0x08:  values[i] = String.valueOf(file.readFloat());
-								break;
+					case Constants.FLOAT:  
+						values[i] = String.valueOf(file.readFloat());
+						break;
 
-					case 0x09:  values[i] = String.valueOf(file.readDouble());
-								break;
+					case Constants.DOUBLE:  
+						values[i] = String.valueOf(file.readDouble());
+						break;
 
-					case 0x0A:  Long temp = file.readLong();
-								Date dateTime = new Date(temp);
-								values[i] = dateFormat.format(dateTime);
-								break;
+					case Constants.DATETIME:  
+						Long temp = file.readLong();
+						Date dateTime = new Date(temp);
+						values[i] = dateFormat.format(dateTime);
+						break;
 
-					case 0x0B:  temp = file.readLong();
-								Date date = new Date(temp);
-								values[i] = dateFormat.format(date).substring(0,10);
-								break;
+					case Constants.DATE:  
+						temp = file.readLong();
+						Date date = new Date(temp);
+						values[i] = dateFormat.format(date).substring(0,10);
+						break;
 
-					default:    int len = new Integer(stc[i-1]-0x0C); //why 12 is subtracted?
+					//text case
+					default:    int len = typeCode[i-1]-0x0C;
 								byte[] bytes = new byte[len];
 								file.read(bytes);
 								values[i] = new String(bytes);
@@ -221,70 +193,37 @@ public class Table{
 		return values;
 	}
 
-	public static void createTable(String table, String[] col){
-		try{			
-			String[] new_col = new String[col.length+1];	// adding rowid as the first column
-			new_col[0] = "rowid INT UNIQUE";
-			for(int i=0;i<col.length;i++) {
-				new_col[i+1] = col[i];
+	public static void createTable(String table, String[] cols){
+		try{
+			// adding rowid as the first column
+			String[] newCol = new String[cols.length+1];	
+			newCol[0] = "rowid INT UNIQUE";
+			for(int i=0;i<cols.length;i++) {
+				newCol[i+1] = cols[i];
 			}
 			
-			RandomAccessFile file = new RandomAccessFile(dir_userdata+table+".tbl", "rw");
-			file.setLength(pageSize);
+			
+			//create a file for the new table
+			RandomAccessFile file = new RandomAccessFile(Constants.dirUserdata+table+".tbl", "rw");
+			file.setLength(Constants.pageSize);
 			file.seek(0);
-			file.writeByte(0x0D);
-			file.close();
+			file.writeByte(Constants.recordsPage);
+			file.close();	
 			
-			file = new RandomAccessFile(dir_catalog+"davisbase_tables.tbl", "rw");
+			//insert values in davisbase_tables
+			String[] values = {"0", table, String.valueOf(0)};
+			insertInto(Constants.TABLE_CATALOG, values,Constants.dirCatalog);
 			
-			int numOfPages = pages(file);
-			int page=1;
-			for(int p = 1; p <= numOfPages; p++){
-				int rm = BPlusTree.getRightMost(file, p);
-				if(rm == 0)
-					page = p;
-			}
-			
-			int[] keys = BPlusTree.getKeyArray(file, page);
-			int l = keys[0];
-			for(int i = 0; i < keys.length; i++)
-				if(keys[i]>l)
-					l = keys[i];
-			file.close();
-			
-			String[] values = {Integer.toString(l+1), table, String.valueOf(0)};
-			insertInto("davisbase_tables", values,dir_catalog);
-
-			file = new RandomAccessFile(dir_catalog+"davisbase_columns.tbl", "rw");
-			
-			numOfPages = pages(file);
-			page=1;
-			for(int p = 1; p <= numOfPages; p++){
-				int rm = BPlusTree.getRightMost(file, p);
-				if(rm == 0)
-					page = p;
-			}
-			
-			keys = BPlusTree.getKeyArray(file, page);
-			l = keys[0];
-			for(int i = 0; i < keys.length; i++)
-				if(keys[i]>l)
-					l = keys[i];
-			file.close();
-			
-						
-			for(int i = 0; i < new_col.length; i++){
-				l = l + 1;
-				String[] token = new_col[i].split(" ");
-				String col_name = token[0];
-				String dt = token[1].toUpperCase();
-				String pos = Integer.toString(i+1);
+			//parse column data and insert into davisbase_columns
+			for(int i = 0; i < newCol.length; i++){
+				String[] tokens = newCol[i].split(" ");
 				String nullable;
 				String unique="NO";
-				if(token.length > 2)
+				
+				if(tokens.length > 2)
 				{
 					nullable = "NO";
-					if(token[2].toUpperCase().trim().equals("UNIQUE"))
+					if(tokens[2].toUpperCase().trim().equals("UNIQUE"))
 						unique = "YES";
 					else
 						unique = "NO";
@@ -292,22 +231,10 @@ public class Table{
 				else
 					 nullable = "YES";
 				
-				
-				String[] value = {Integer.toString(l), table, col_name, dt, pos, nullable, unique};
-				insertInto("davisbase_columns", value,dir_catalog);
+				//insert value into davisbase_columns
+				String[] value = {"0", table, tokens[0], tokens[1].toUpperCase(), String.valueOf(i+1), nullable, unique};
+				insertInto("davisbase_columns", value,Constants.dirCatalog);
 			}
-			
-//			String[] temp_cmp = new String[3];
-//			temp_cmp[0] = "rowid";
-//			temp_cmp[1] = "=";
-//			temp_cmp[2] = Integer.toString(3);
-//			
-//			String[] temp_set = new String[3];
-//			temp_set[0] = "cur_row_id";
-//			temp_set[1] = "=";
-//			temp_set[2] = Integer.toString(0);
-			
-			//update("davisbase_tables",temp_cmp,temp_set,dir_catalog);
 
 		}catch(Exception e){
 			System.out.println(e);
@@ -316,12 +243,11 @@ public class Table{
 
 	public static void update(String table, String[] cmp, String[] set, String dir){
 		try{
-			
-			//int key = new Integer(cmp[2]);
 			ArrayList<Integer> rowids = new ArrayList<Integer>();
 			
-			if(!"rowid".equals(cmp[0])) {
-				//get the rowids to be updated
+			//get the rowids to be updated
+			if(cmp.length==0 || !"rowid".equals(cmp[0])) {
+				
 				Records records = select(table, new String[] {"*"}, cmp, false);
 				rowids.addAll(records.content.keySet());
 			}
@@ -330,41 +256,58 @@ public class Table{
 			
 			for(int key : rowids) {
 				RandomAccessFile file = new RandomAccessFile(dir+table+".tbl", "rw");
-				int numPages = pages(file);
+				int numPages = getPageCount(file);
+				
+				//iterate over all the pages to check which page contains our key
 				int page = 0;
-				for(int p = 1; p <= numPages; p++) {
-					if(BPlusTree.hasKey(file, p, key)&BPlusTree.getPageType(file, p)==0x0D){
-						page = p;
+				for(int currPage = 1; currPage <= numPages; currPage++) {
+					if(BPlusTree.hasKey(file, currPage, key) && BPlusTree.getPageType(file, currPage)==Constants.recordsPage){
+						page = currPage;
 					}
 				}
 				
-				if(page==0)
-				{
+				//if not found return error
+				if(page==0){
 					System.out.println("The given key value does not exist");
 					return;
 				}
 				
+				//get all the keys on the current page
 				int[] keys = BPlusTree.getKeyArray(file, page);
-				int x = 0;
+				int cellNo = 0;
+				
+				//search for our key
 				for(int i = 0; i < keys.length; i++)
 					if(keys[i] == key)
-						x = i;
-				int offset = BPlusTree.getCellOffset(file, page, x);
-				long loc = BPlusTree.getCellLoc(file, page, x);
+						cellNo = i;
 				
+				//get the location of our key
+				int offset = BPlusTree.getCellOffset(file, page, cellNo);
+				long loc = BPlusTree.getCellLoc(file, page, cellNo);
+				
+				//get all columns, saved values and data types for current key
 				String[] cols = getColName(table);
 				String[] values = retrieveValues(file, loc);
-	
 				String[] type = getDataType(table);
+				
+				//handle date data type
 				for(int i=0; i < type.length; i++)
 					if(type[i].equals("DATE") || type[i].equals("DATETIME"))
 						values[i] = "'"+values[i]+"'";
-	
+				
+				//search for our column
+				int x = 0;
 				for(int i = 0; i < cols.length; i++)
-					if(cols[i].equals(set[0]))
+					if(cols[i].equals(set[0])) {
 						x = i;
+						break;
+					}
+				
+				//update column value
 				values[x] = set[2];
 	
+				
+				//check for null constraint
 				String[] nullable = getNullable(table);
 				for(int i = 0; i < nullable.length; i++){
 					if(values[i].equals("null") && nullable[i].equals("NO")){
@@ -372,7 +315,8 @@ public class Table{
 						return;
 					}
 				}
-	
+				
+				//update the value in file
 				byte[] stc = new byte[cols.length-1];
 				int plsize = calPayloadSize(table, values, stc);
 				BPlusTree.updateLeafCell(file, page, offset, plsize, key, stc, values);
@@ -401,28 +345,31 @@ public class Table{
 		String[] nullable = getNullable(table);
 		String[] unique = getUnique(table);
 		
-		int numOfPages = pages(file);
-		int pages=1;
-		for(int p = 1; p <= numOfPages; p++){
-			int rm = BPlusTree.getRightMost(file, p);
-			if(rm == 0)
-				pages = p;
-		}
-		
 		int rowId = 0;
-		if("davisbase_tables".equals(table) || "davisbase_columns".equals(table)) {
+		if(Constants.TABLE_CATALOG.equals(table) || Constants.COLUMN_CATALOG.equals(table)) {
+			//iterate through the file to get latest rowid
+			int numOfPages = getPageCount(file);
+			int pages = 1;
+			for(int p = 1; p <= numOfPages; p++){
+				int rm = BPlusTree.getRightMost(file, p);
+				if(rm == 0)
+					pages = p;
+			}
 			int[] keys = BPlusTree.getKeyArray(file, pages);
 			for(int i = 0; i < keys.length; i++)
 				if(keys[i]>rowId)
 					rowId = keys[i];
 		}
 		else {
-			Records rowIdRecords = select("davisbase_tables", new String[]{"cur_row_id"}, new String[]{"table_name", "=", table}, false);
+			//do a select to get the latest rowid
+			Records rowIdRecords = select(Constants.TABLE_CATALOG, new String[]{"cur_row_id"}, new String[]{"table_name", "=", table}, false);
 			rowId = Integer.parseInt(rowIdRecords.content.entrySet().iterator().next().getValue()[2]);
 		}
 		
 		values[0]=String.valueOf(rowId + 1);
-
+		
+		
+		//check for null values
 		for(int i = 0; i < nullable.length; i++)
 			if(values[i].equals("null") && nullable[i].equals("NO")){
 				System.out.println("NULL-value constraint violation");
@@ -430,285 +377,244 @@ public class Table{
 				return;
 			}
 		
+		//check for unique constraints
 		for(int i = 0; i < unique.length; i++)
 			if(unique[i].equals("YES")){
 				System.out.println("Checking for unique constraint violation");
 				System.out.println();
-				String path = dir_userdata ;
 				
 				try {
-				
-				RandomAccessFile uni = new RandomAccessFile(path+table+".tbl", "rw");
-				
-				String[] columnName = getColName(table);
-				String[] type = getDataType(table);
-				
-				Records records = new Records();
-				
-				String[] cmp = {columnName[i],"=",values[i]};
-				
-				filter(uni, cmp, columnName, type, records);
-				
-				if (records.num_row>0)
-				{
-					System.out.println("Duplicate key found for "+columnName[i].toString());
+					String[] columnName = getColName(table);
 					
-					System.out.println();
-					return;
+					String[] cmp = {columnName[i],"=",values[i]};
+					Records records = select(table, new String[] {"*"}, cmp, false);
+					
+					
+					if(records.num_row>0){
+						System.out.println("Duplicate key found for "+columnName[i].toString());
+						System.out.println();
+						return;
+					}
 				}
-				 
-				uni.close();
-				
-				}catch (Exception e)
-				{
+				catch (Exception e){
 					System.out.println(e);
 				}
 				
 			}
 
-		int key = new Integer(values[0]);
-		int page = searchKeyPage(file, key);
+		//check for the uniqueness of new row id
+		int newRowId = Integer.parseInt(values[0]);
+		int page = searchKeyPage(file, newRowId);
 		if(page != 0)
-			if(BPlusTree.hasKey(file, page, key)){
+			if(BPlusTree.hasKey(file, page, newRowId)){
 				System.out.println("Uniqueness constraint violation");
 				System.out.println("for");
-				for(int k=0;k<values.length;k++)
+				for(int k=0; k < values.length; k++)
 				System.out.println(values[k]);
 				
 				return;
 			}
+		
 		if(page == 0)
 			page = 1;
 		
-		byte[] stc = new byte[dtype.length-1];
-		short plSize = (short) calPayloadSize(table, values, stc);
-		int cellSize = plSize + 6;
+		
+		byte[] typeCode = new byte[dtype.length-1];
+		short payloadSize = (short) calPayloadSize(table, values, typeCode);
+		int cellSize = payloadSize + 6;
 		int offset = BPlusTree.checkLeafSpace(file, page, cellSize);
 		
 		if(offset != -1){
-			BPlusTree.insertLeafCell(file, page, offset, plSize, key, stc, values);
+			BPlusTree.insertLeafCell(file, page, offset, payloadSize, newRowId, typeCode, values);
 
 		}else{
 			BPlusTree.splitLeaf(file, page);
 			insertInto(file, table, values);
 		}
 		
-		if(!"davisbase_tables".equals(table) && !"davisbase_columns".equals(table)) {
-			update("davisbase_tables", 
+		if(!Constants.TABLE_CATALOG.equals(table) && !Constants.COLUMN_CATALOG.equals(table)) {
+			update(Constants.TABLE_CATALOG, 
 					new String[] {"table_name", "=", table}, 
 					new String[] {"cur_row_id", "=", String.valueOf(values[0])}, 
-					dir_catalog);
+					Constants.dirCatalog);
 		}
 	}
 
-	public static int calPayloadSize(String table, String[] vals, byte[] stc){
+	public static int calPayloadSize(String table, String[] vals, byte[] typeCode){
 		String[] dataType = getDataType(table);
 		int size =dataType.length;
 		for(int i = 1; i < dataType.length; i++){
-			stc[i - 1]= getStc(vals[i], dataType[i]);
-			size = size + feildLength(stc[i - 1]);
+			typeCode[i - 1]= getTypeCode(vals[i], dataType[i]);
+			size = size + fieldLength(typeCode[i - 1]);
 		}
 		return size;
 	}
 	
 
-	public static byte getStc(String value, String dataType){
+	public static byte getTypeCode(String value, String dataType){
 		if(value.equals("null")){
 			switch(dataType){
-				case "TINYINT":     return 0x00;
-				case "SMALLINT":    return 0x01;
-				case "INT":			return 0x02;
-				case "BIGINT":      return 0x03;
-				case "REAL":        return 0x02;
-				case "DOUBLE":      return 0x03;
-				case "DATETIME":    return 0x03;
-				case "DATE":        return 0x03;
-				case "TEXT":        return 0x03;
-				default:			return 0x00;
+				case "TINYINT":     return Constants.NULL;
+				case "SMALLINT":    return Constants.SHORTNULL;
+				case "INT":			return Constants.INTNULL;
+				case "BIGINT":      return Constants.LONGNULL;
+				case "REAL":        return Constants.INTNULL;
+				case "DOUBLE":      return Constants.LONGNULL;
+				case "DATETIME":    return Constants.LONGNULL;
+				case "DATE":        return Constants.LONGNULL;
+				case "TEXT":        return Constants.LONGNULL;
+				default:			return Constants.NULL;
 			}							
 		}else{
 			switch(dataType){
-				case "TINYINT":     return 0x04;
-				case "SMALLINT":    return 0x05;
-				case "INT":			return 0x06;
-				case "BIGINT":      return 0x07;
-				case "REAL":        return 0x08;
-				case "DOUBLE":      return 0x09;
-				case "DATETIME":    return 0x0A;
-				case "DATE":        return 0x0B;
-				case "TEXT":        return (byte)(value.length()+0x0C);
-				default:			return 0x00;
+				case "TINYINT":     return Constants.TINYINT;
+				case "SMALLINT":    return Constants.SHORTINT;
+				case "INT":			return Constants.INT;
+				case "BIGINT":      return Constants.LONG;
+				case "REAL":        return Constants.FLOAT;
+				case "DOUBLE":      return Constants.DOUBLE;
+				case "DATETIME":    return Constants.DATETIME;
+				case "DATE":        return Constants.DATE;
+				case "TEXT":        return (byte)(value.length()+Constants.TEXT);
+				default:			return Constants.NULL;
 			}
 		}
 	}
 	
 
-    public static short feildLength(byte stc){
-		switch(stc){
-			case 0x00: return 1;
-			case 0x01: return 2;
-			case 0x02: return 4;
-			case 0x03: return 8;
-			case 0x04: return 1;
-			case 0x05: return 2;
-			case 0x06: return 4;
-			case 0x07: return 8;
-			case 0x08: return 4;
-			case 0x09: return 8;
-			case 0x0A: return 8;
-			case 0x0B: return 8;
-			default:   return (short)(stc - 0x0C);
+    public static short fieldLength(byte typeCode){
+		switch(typeCode){
+			case Constants.NULL: return 1;
+			case Constants.SHORTNULL: return 2;
+			case Constants.INTNULL: return 4;
+			case Constants.LONGNULL: return 8;
+			case Constants.TINYINT: return 1;
+			case Constants.SHORTINT: return 2;
+			case Constants.INT: return 4;
+			case Constants.LONG: return 8;
+			case Constants.FLOAT: return 4;
+			case Constants.DOUBLE: return 8;
+			case Constants.DATETIME: return 8;
+			case Constants.DATE: return 8;
+			default:   return (short)(typeCode - Constants.TEXT);
 		}
 	}
-
-
-	
-public static int searchKeyPage(RandomAccessFile file, int key){
-		int val = 1;
+    
+    
+    public static int searchKeyPage(RandomAccessFile file, int key){
 		try{
-			int numPages = pages(file);
-			for(int page = 1; page <= numPages; page++){
-				file.seek((page - 1)*pageSize);
+			//get the number of pages
+			int numPages = getPageCount(file);
+			
+			//iterate over all the pages
+			for(int currPage = 1; currPage <= numPages; currPage++){
+				//get the page type
+				file.seek((currPage - 1)*Constants.pageSize);
 				byte pageType = file.readByte();
-				if(pageType == 0x0D){
-					int[] keys = BPlusTree.getKeyArray(file, page);
+				
+				if(pageType == Constants.recordsPage){
+					//get all the keys on current page
+					int[] keys = BPlusTree.getKeyArray(file, currPage);
+					
 					if(keys.length == 0)
 						return 0;
-					int rm = BPlusTree.getRightMost(file, page);
+					
+					int rm = BPlusTree.getRightMost(file, currPage);
+					
+					//if key in current page return current page number
 					if(keys[0] <= key && key <= keys[keys.length - 1]){
-						return page;
-					}else if(rm == 0 && keys[keys.length - 1] < key){
-						return page;
+						return currPage;
+					}
+					//if last page and key less than last key on this page, return current page
+					else if(rm == 0 && keys[keys.length - 1] < key){
+						return currPage;
 					}
 				}
 			}
-		}catch(Exception e){
+		}
+		catch(Exception e){
 			System.out.println(e);
 		}
 
-		return val;
+		return 1;
 	}
 
-
-	
 	public static String[] getDataType(String table){
-		String[] dataType = new String[0];
-		try{
-			RandomAccessFile file = new RandomAccessFile(dir_catalog+"davisbase_columns.tbl", "rw");
-			Records records = new Records();
-			String[] columnName = {"rowid", "table_name", "column_name", "data_type", "ordinal_position", "is_nullable","is_unique"};
-			String[] cmp = {"table_name","=",table};
-			filter(file, cmp, columnName, records);
-			HashMap<Integer, String[]> content = records.content;
-			ArrayList<String> array = new ArrayList<String>();
-			for(String[] x : content.values()){
-				array.add(x[3]);
-			}
-			int size=array.size();
-			dataType = array.toArray(new String[size]);
-			file.close();
-			return dataType;
-		}catch(Exception e){
-			System.out.println(e);
-		}
-		return dataType;
+		return getDavisbaseColumnsColumn(3, table);
 	}
 
 	public static String[] getColName(String table){
-		String[] cols = new String[0];
-		try{
-			RandomAccessFile file = new RandomAccessFile(dir_catalog+"davisbase_columns.tbl", "rw");
-			Records records = new Records();
-			String[] columnName = {"rowid", "table_name", "column_name", "data_type", "ordinal_position", "is_nullable","is_unique"};
-			String[] cmp = {"table_name","=",table};
-			filter(file, cmp, columnName, records);
-			HashMap<Integer, String[]> content = records.content;
-			ArrayList<String> array = new ArrayList<String>();
-			for(String[] i : content.values()){
-				array.add(i[2]);
-			}
-			int size=array.size();
-			cols = array.toArray(new String[size]);
-			file.close();
-			return cols;
-		}catch(Exception e){
-			System.out.println(e);
-		}
-		return cols;
+		return getDavisbaseColumnsColumn(2, table);
 	}
 
 	public static String[] getNullable(String table){
-		String[] nullable = new String[0];
-		try{
-			RandomAccessFile file = new RandomAccessFile(dir_catalog+"davisbase_columns.tbl", "rw");
-			Records records = new Records();
-			String[] columnName = {"rowid", "table_name", "column_name", "data_type", "ordinal_position", "is_nullable"};
-			String[] cmp = {"table_name","=",table};
-			filter(file, cmp, columnName, records);
-			HashMap<Integer, String[]> content = records.content;
-			ArrayList<String> array = new ArrayList<String>();
-			for(String[] i : content.values()){
-				array.add(i[5]);
-			}
-			int size=array.size();
-			nullable = array.toArray(new String[size]);
-			file.close();
-			return nullable;
-		}catch(Exception e){
-			System.out.println(e);
-		}
-		return nullable;
+		return getDavisbaseColumnsColumn(5, table);
 	}
 	
 	public static String[] getUnique(String table){
-		String[] unique = new String[0];
+		return getDavisbaseColumnsColumn(6, table);
+	}
+	
+	public static String[] getDavisbaseColumnsColumn(int i, String table){
 		try{
-			RandomAccessFile file = new RandomAccessFile(dir_catalog+"davisbase_columns.tbl", "rw");
-			Records records = new Records();
-			String[] columnName = {"rowid", "table_name", "column_name", "data_type", "ordinal_position", "is_nullable", "is_unique"};
-			String[] cmp = {"table_name","=",table};
-			filter(file, cmp, columnName, records);
+			//fetch the data from davisbase_columns
+			Records records = select(Constants.COLUMN_CATALOG, new String[] {"*"}, new String[] {"table_name", "=", table}, false);
+
+			//save the result
 			HashMap<Integer, String[]> content = records.content;
+
+			//add all to the result array
 			ArrayList<String> array = new ArrayList<String>();
-			for(String[] i : content.values()){
-				array.add(i[6]);
+			for(String[] x : content.values()){
+				array.add(x[i]);
 			}
-			int size=array.size();
-			unique = array.toArray(new String[size]);
-			file.close();
-			return unique;
-		}catch(Exception e){
+
+			return (String[])array.toArray();
+			
+		}
+		catch(Exception e){
 			System.out.println(e);
 		}
-		return unique;
+		
+		return new String[0];
 	}
-
+	
 	public static Records select(String table, String[] cols, String[] cmp, boolean display){
 		try{
-			String path = dir_userdata ;
-			if (table.equalsIgnoreCase("davisbase_tables") || table.equalsIgnoreCase("davisbase_columns"))
-				path = dir_catalog ;
+			//get the path from where to pick the file
+			String path = Constants.dirUserdata ;
+			if (table.equalsIgnoreCase(Constants.TABLE_CATALOG) || table.equalsIgnoreCase(Constants.COLUMN_CATALOG))
+				path = Constants.dirCatalog ;
+			
 			
 			RandomAccessFile file = new RandomAccessFile(path+table+".tbl", "rw");
+			
+			//get column names and data types
 			String[] columnName = getColName(table);
-			String[] type = getDataType(table);
+			String[] dataType = getDataType(table);
 			
 			Records records = new Records();
 			
+			//handle null values in comparision
 			if (cmp.length > 0 && cmp[1].equals("=") && cmp[2].equalsIgnoreCase("null")) 
 			{
 				System.out.println("Empty Set");
+				file.close();
 				return null;
 			}
-			
 			if (cmp.length > 0 && cmp[1].equals("!=") && cmp[2].equalsIgnoreCase("null")) 
 			{
 				cmp = new String[0];
 			}
 			
-			filter(file, cmp, columnName, type, records);
+			
+			
+			filter(file, cmp, columnName, dataType, records);
+			
 			if(display) records.display(cols); 
+			
 			file.close();
+			
 			return records;
 		}catch(Exception e){
 			System.out.println(e);
@@ -719,81 +625,50 @@ public static int searchKeyPage(RandomAccessFile file, int key){
 
 	public static void filter(RandomAccessFile file, String[] cmp, String[] columnName, String[] type, Records records){
 		try{
+			//get total number of pages in the file
+			int numOfPages = getPageCount(file);
 			
-			int numOfPages = pages(file);
-			
+			//iterate over all the pages
 			for(int page = 1; page <= numOfPages; page++){
-				
-				file.seek((page-1)*pageSize);
+				//get the page type
+				file.seek((page-1) * Constants.pageSize);
 				byte pageType = file.readByte();
 				
-					if(pageType == 0x0D){
-						
+				if(pageType == Constants.recordsPage){
+					//get number of cells
 					byte numOfCells = BPlusTree.getCellNumber(file, page);
-
-					 for(int i=0; i < numOfCells; i++){
-						long loc = BPlusTree.getCellLoc(file, page, i);
+	
+					//iterate over all the cells
+					for(int cellNum=0; cellNum < numOfCells; cellNum++){
+						//fetch data in the current cell
+						long loc = BPlusTree.getCellLoc(file, page, cellNum); 
 						String[] vals = retrieveValues(file, loc);
 						int rowid=Integer.parseInt(vals[0]);
 						
+						//date handling
 						for(int j=0; j < type.length; j++)
 							if(type[j].equals("DATE") || type[j].equals("DATETIME"))
 								vals[j] = "'"+vals[j]+"'";
 						
+						//check if the value satisfies the condition
 						boolean check = cmpCheck(vals, rowid , cmp, columnName);
-
-						
+	
+						//date handling
 						for(int j=0; j < type.length; j++)
 							if(type[j].equals("DATE") || type[j].equals("DATETIME"))
 								vals[j] = vals[j].substring(1, vals[j].length()-1);
-
+	
+						//if condition satisfied, add to response
 						if(check)
 							records.add(rowid, vals);
-					 }
-				   }
-				    else
-						continue;
-			}
 
-			records.columnName = columnName;
-			records.format = new int[columnName.length];
-
-		}catch(Exception e){
-			System.out.println("Error at filter");
-			e.printStackTrace();
-		}
-
-	}
-
-
-	public static void filter(RandomAccessFile file, String[] cmp, String[] columnName, Records records){
-		try{
-			
-			int numOfPages = pages(file);
-			for(int page = 1; page <= numOfPages; page++){
-				
-				file.seek((page-1)*pageSize);
-				byte pageType = file.readByte();
-				if(pageType == 0x0D)
-				{
-					byte numOfCells = BPlusTree.getCellNumber(file, page);
-
-					for(int i=0; i < numOfCells; i++){
-						
-						long loc = BPlusTree.getCellLoc(file, page, i);	
-						String[] vals = retrieveValues(file, loc);
-						int rowid=Integer.parseInt(vals[0]);
-
-						boolean check = cmpCheck(vals, rowid, cmp, columnName);
-						
-						if(check)
-							records.add(rowid, vals);
 					}
 				}
-				else
+			    else
 					continue;
 			}
-
+			
+			
 			records.columnName = columnName;
 			records.format = new int[columnName.length];
 
@@ -803,17 +678,16 @@ public static int searchKeyPage(RandomAccessFile file, int key){
 		}
 
 	}
-
-
 	
 	public static boolean cmpCheck(String[] values, int rowid, String[] cmp, String[] columnName){
-
 		boolean check = false;
 		
+		//nothing to compare
 		if(cmp.length == 0){
 			check = true;
 		}
 		else{
+			//get the column position
 			int colPos = 1;
 			for(int i = 0; i < columnName.length; i++){
 				if(columnName[i].equals(cmp[0])){
@@ -823,63 +697,41 @@ public static int searchKeyPage(RandomAccessFile file, int key){
 			}
 			
 			if(colPos == 1){
+				//if comparision on rowid
 				int val = Integer.parseInt(cmp[2]);
 				String operator = cmp[1];
+				
+				//check different condition
 				switch(operator){
-					case "=": if(rowid == val) 
-								check = true;
-							  else
-							  	check = false;
-							  break;
-					case ">": if(rowid > val) 
-								check = true;
-							  else
-							  	check = false;
-							  break;
-					case ">=": if(rowid >= val) 
-						        check = true;
-					          else
-					  	        check = false;	
-					          break;
-					case "<": if(rowid < val) 
-								check = true;
-							  else
-							  	check = false;
-							  break;
-					case "<=": if(rowid <= val) 
-								check = true;
-							  else
-							  	check = false;	
-							  break;
-					case "!=": if(rowid != val)  
-								check = true;
-							  else
-							  	check = false;	
-							  break;						  							  							  							
+					case "=": 
+						return rowid == val;
+					case ">": 
+						return rowid > val;
+					case ">=": 
+						return rowid >= val;
+					case "<": 
+						return rowid < val;
+					case "<=": 
+						return rowid <= val;
+					case "!=": 
+						return rowid != val;						  							  							  							
 				}
-			}else{
-				if(cmp[2].equals(values[colPos-1]))
-					check = true;
-				else
-					check = false;
 			}
+			else 
+				return cmp[2].equals(values[colPos-1]);
 		}
+		
 		return check;
 	}
 	
 	public static void createIndex(String table, String[] cols){
 		try{
-			String path = dir_userdata ;
+			String path = Constants.dirUserdata ;
 			
 			RandomAccessFile file = new RandomAccessFile(path+table+".tbl", "rw");
 			String[] columnName = getColName(table);
-			String[] type = getDataType(table);
-			String [] cmp = new String[0];
-			HashMap<String, String> content = new HashMap<String, String>();
 			
-			Records records = new Records();
-			
-			BTree b = new BTree(new RandomAccessFile(path+table+".idx", "rw"));
+			BTree b = new BTree(new RandomAccessFile(path+table+".ndx", "rw"));
 			
 			int control=0; // = new int[cols.length];
 			for(int j = 0; j < cols.length; j++)
@@ -887,30 +739,24 @@ public static int searchKeyPage(RandomAccessFile file, int key){
 					if(cols[j].equals(columnName[i]))
 						control = i;
 			
-			//filter(file, cmp, columnName, type, buffer);
 			
 			try{
 				
-				int numOfPages = pages(file);
+				int numOfPages = getPageCount(file);
 				for(int page = 1; page <= numOfPages; page++){
 					
-					file.seek((page-1)*pageSize);
+					file.seek((page-1)*Constants.pageSize);
 					byte pageType = file.readByte();
 					if(pageType == 0x0D)
 					{
 						byte numOfCells = BPlusTree.getCellNumber(file, page);
 
 						for(int i=0; i < numOfCells; i++){
-							
 							long loc = BPlusTree.getCellLoc(file, page, i);	
 							String[] vals = retrieveValues(file, loc);
 							int rowid=Integer.parseInt(vals[0]);
 							
-
-//							content.put(String.valueOf(vals[control]), String.valueOf(loc));
 							b.add(String.valueOf(vals[control]), String.format("%04x",loc));
-							
-							//String.valueOf(Long.toHexString(0xFFFF &loc))
 						}
 					}
 					else

@@ -10,8 +10,8 @@ import java.util.Scanner;
 public class DavisBase {
 
 	static String prompt = "TeamEsql> ";
-	static String dir_catalog = "data/catalog";
-	static String dir_userdata = "data/user_data";
+	static String dir_catalog = "data/catalog/";
+	static String dir_userdata = "data/user_data/";
 	static String version = "V1.0";
 	
 
@@ -166,7 +166,7 @@ public static void initialize() {
 		}
 
 		try {
-			RandomAccessFile tablesCatalog = new RandomAccessFile(dir_catalog+"/davisbase_tables.tbl", "rw");
+			RandomAccessFile tablesCatalog = new RandomAccessFile(dir_catalog+"davisbase_tables.tbl", "rw");
 			tablesCatalog.setLength(pageSize);
 			tablesCatalog.seek(0);
 			tablesCatalog.write(0x0D);
@@ -205,7 +205,7 @@ public static void initialize() {
 		}
 		
 		try {
-			RandomAccessFile columnsCatalog = new RandomAccessFile(dir_catalog+"/davisbase_columns.tbl", "rw");
+			RandomAccessFile columnsCatalog = new RandomAccessFile(dir_catalog+"davisbase_columns.tbl", "rw");
 			columnsCatalog.setLength(pageSize);
 			columnsCatalog.seek(0);       
 			columnsCatalog.writeByte(0x0D); 
@@ -388,7 +388,7 @@ public static void initialize() {
 			columnsCatalog.close();
 			
 			String[] cur_row_id_value = {"10", "davisbase_tables","cur_row_id","INT","3","NO","NO"};		
-			Table.insertInto("davisbase_columns",cur_row_id_value,dir_catalog + "/");			//add current row_id column to davisbase_columns
+			Table.insertInto("davisbase_columns",cur_row_id_value,dir_catalog);			//add current row_id column to davisbase_columns
 		}
 		catch (Exception e) {
 			System.out.println(e);
@@ -523,7 +523,7 @@ public static void initialize() {
 		String table = "davisbase_tables";
 		String[] cols = {"table_name"};
 		String[] cmptr = new String[0];
-		//Table.select(table, cols, cmptr,dir_catalog+"/");
+		//Table.select(table, cols, cmptr,dir_catalog);
 		Table.select(table, cols, cmptr,true);
 	}
 	
@@ -570,7 +570,7 @@ public static void initialize() {
 		}
 		else
 		{
-			Table.insertInto(table, insert_vals,dir_userdata+"/");
+			Table.insertInto(table, insert_vals,dir_userdata);
 		}
     	}
     	catch(Exception e)
@@ -587,14 +587,17 @@ public static void initialize() {
 		String[] tokens=deleteString.split(" ");
 		String table = tokens[2];
 		String[] temp = deleteString.split("where");
-		String cmpTemp = temp[1];
-		String[] cmp = parserEquation(cmpTemp);
+		String[] cmp = new String[0];
+		if(temp.length>1) {
+			String cmpTemp = temp[1];
+			cmp = parserEquation(cmpTemp);
+		}
 		if(!tableExists(table)){
 			System.out.println("Table "+table+" does not exist.");
 		}
 		else
 		{
-			Table.delete(table, cmp);
+			Table.delete(table, cmp, dir_userdata);
 		}
 		
 		

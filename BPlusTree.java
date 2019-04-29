@@ -682,7 +682,7 @@ public class BPlusTree{
 
 	public static void setCellOffset(RandomAccessFile file, int page, int id, int offset){
 		try{
-			file.seek((page-1)*pageSize+12+id*2);
+			file.seek((page-1) * pageSize + 12 + id * 2);
 			file.writeShort(offset);
 		}catch(Exception e){
 			System.out.println(e);
