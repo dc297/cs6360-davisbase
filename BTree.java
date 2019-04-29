@@ -192,12 +192,9 @@ public class BTree {
             try {
                 Element tmp = new Element();
                 file.seek(seek);
-                //read and set parent
                 tmp.parent = file.readLong();
-                //read number of elements
                 int numElements = file.readInt();
                 long pointer = file.getFilePointer();
-                //read and set keys
                 for (int i = 0; i < numElements; i++) {
                     byte[] inBytes = new byte[KEY_LENGTH];
                     file.readFully(inBytes, 0, KEY_LENGTH);
@@ -205,10 +202,8 @@ public class BTree {
                     s = s.trim();
                     tmp.keys.add(s);
                 }
-                //seek to the end of keys
                 long valuePointer = pointer + KEY_SIZE;
                 file.seek(valuePointer);
-                //read the values
                 for (int i = 0; i < numElements; i++) {
                     byte[] inBytes = new byte[VALUE_LENGTH];
                     file.readFully(inBytes, 0, VALUE_LENGTH);
@@ -238,7 +233,6 @@ public class BTree {
             if (this.values.size() == 0) {
                 return false;
             } else {
-                //if the first value is an address then it has children
                 if (this.values.get(0).startsWith("$")) {
                     return true;
                 } else {
@@ -258,7 +252,6 @@ public class BTree {
             long leftPointer = this.getNextAvailPointer();
             nodeCache.put(leftPointer + "", left);
             long rightPointer = this.getNextAvailPointer();
-            //create the right and left nodes on disk
             nodeCache.put(rightPointer + "", right);
             int half = (int) Math.ceil(1.0 * BTree.order / 2);
             int size = this.keys.size();
@@ -271,7 +264,6 @@ public class BTree {
             }
             if (hadChildren) {
                 fix = false;
-                //need to set the left seek location
                 this.set(left.keys.set(left.keys.size() - 1, "null"), this.createPointerLocation(leftPointer));
             }
             left.parent = OFFSET;
@@ -279,9 +271,7 @@ public class BTree {
             if (fix) {
                 this.set(right.keys.get(0), this.createPointerLocation(leftPointer));
             }
-            //thinking about setting all the nulls to "$null"
             this.set("null", this.createPointerLocation(rightPointer));
-            //now commit again
             this.commit(left, leftPointer);
             this.commit(right, rightPointer);
         }
@@ -291,7 +281,6 @@ public class BTree {
         }
 
         private long getPointerLocation(String pointer) {
-            //returns -99 if the inputed string is not a pointer to a node
             if (pointer.startsWith("$")) {
                 return Long.parseLong(pointer.substring(1));
             } else {
@@ -329,7 +318,6 @@ public class BTree {
             for (int i = 0; i < half; i++) {
                 left.set(right.keys.remove(0), right.values.remove(0));
             }
-            //the parent pointer was a pain so i just left it out except for root
             this.set(right.keys.get(0), this.createPointerLocation(leftPointer));
             this.commit(left, leftPointer);
         }
@@ -342,7 +330,6 @@ public class BTree {
             for (int i = 0; i < half; i++) {
                 left.set(right.keys.remove(0), right.values.remove(0));
             }
-            //the parent pointer was a pain so i just left it out except for root
             String s = left.keys.set(left.keys.size() - 1, "null");
             this.set(s, this.createPointerLocation(leftPointer));
             this.commit(left, leftPointer);
@@ -354,10 +341,8 @@ public class BTree {
 
         private void splitChild(Element n) {
             if (!n.hasChildren()) {
-                //do split leaf
                 this.splitLeafNode(n);
             } else {
-                //do split internal            
                 this.splitInternalNode(n);
             }
         }
@@ -376,31 +361,27 @@ public class BTree {
                             this.values.add(value);
                             return this.needToSplit();
                         }
-                        //int cp = Strings.compareNatural(key, this.keys.get(i));
                         int cp = this.keys.get(i).compareTo(key);
                         
-                        //if its already there replace it
                         if (key.equals(this.keys.get(i))) {
                             this.keys.set(i, key);
                             this.values.set(i, value);
                             return this.needToSplit();
                         }
-                        //if a key is found in the list thats greater then the key to be added
+
                         if (cp < 0) {
                             this.keys.add(i, key);
                             this.values.add(i, value);
                             return this.needToSplit();
                         }
                     }
-                    //if none of the current keys are greater add at the end
+
                     this.keys.add(key);
                     this.values.add(value);
                     return this.needToSplit();
                 } else {
-                    //adds to internal nodes
                     if (value.startsWith("$")) {
                         if (key.equals("null")) {
-                            //+if null is allready there then overwrite it
                             if (this.keys.get(this.keys.size() - 1).equals("null")) {
                                 this.keys.set(this.keys.size() - 1, "null");
                                 this.values.set(this.values.size() - 1, value);
@@ -408,14 +389,12 @@ public class BTree {
                             } else {
                                 this.keys.add("null");
                                 this.values.add(value);
-                                //check to see if internal needs to split
                                 return this.needToSplit();
                             }
                         }
                         int ks = this.keys.size();
                         for (int i = 0; i < ks; i++) {
                             if (!this.keys.get(i).equals("null")) {
-                                //int cp = Strings.compareNatural(key, this.keys.get(i));
                                 int cp = this.keys.get(i).compareTo(key);
                                 
                                 if (key.equals(this.keys.get(i))) {
@@ -423,7 +402,6 @@ public class BTree {
                                     this.values.set(i, value);
                                     return this.needToSplit();
                                 }
-                                //if a key is found in the list thats greater then the key to be added
                                 if (cp < 0) {
                                     this.keys.add(i, key);
                                     this.values.add(i, value);
@@ -431,7 +409,6 @@ public class BTree {
                                 }
                             }
                         }
-                        //if none of the current keys are greater add at the end (but before null)
                         int ksize = this.keys.size();
                         for (int i = 0; i < ksize; i++) {
                             if (this.keys.get(i).equals("null")) {
@@ -445,14 +422,11 @@ public class BTree {
                         return this.needToSplit();
 
                     } else {
-                        //if its adding a value (not adding a node to the values list in internal)
                         int ks = this.keys.size();
                         for (int i = 0; i < ks - 1; i++) {
-                            //int cp = Strings.compareNatural(key, this.keys.get(i));
                             int cp = this.keys.get(i).compareTo(key);
                             
                             if (key.equals(this.keys.get(i))) {
-                                //go over one and go down all the way to left
                                 long nPointerLocation = this.getPointerLocation(this.values.get(i + 1));
                                 Element n = this.fetchElement(nPointerLocation);
                                 if (n.set(key, value)) {
@@ -478,7 +452,6 @@ public class BTree {
                             }
                         }
 
-                        //if none of the keys in the list are greater go down the null key's child
                         long nPointerLocation = this.getPointerLocation(this.values.get(this.keys.size() - 1));
                         Element n = this.fetchElement(nPointerLocation);
                         if (n.set(key, value)) {
