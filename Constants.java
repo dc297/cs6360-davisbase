@@ -36,4 +36,38 @@ public final class Constants {
 	
 	//TEXT
 	public static final byte TEXT = 0x0C;
+	
+	public static final String PROMPT = "TeamRedSql> ";
+	public static final String VERSION = "1.0";
+	
+	public static final int PAGE_SIZE = 512;
+	public static final int TABLE_OFFSET = PAGE_SIZE - 24;
+	public static final int COLUMN_OFFSET = TABLE_OFFSET - 25;
+	
+	//math operators
+	public static final String EQUALS_SIGN = "=";
+	public static final String LESS_THAN_SIGN = "<";
+	public static final String GREATER_THAN_SIGN = ">";
+	public static final String LESS_THAN_EQUAL_SIGN = "<=";
+	public static final String GREATER_THAN_EQUAL_SIGN = ">=";
+	public static final String NOT_EQUAL_SIGN = "!=";
+
+	//file type
+	public static final String FILE_TYPE = ".tbl";
+	public static final String INDEX_FILE_TYPE = ".ndx";
+	
+	//table headers
+	public static final String HEADER_ROWID = "rowid";
+	public static final String HEADER_TABLE_NAME = "table_name";
+	public static final String HEADER_TEXT = "TEXT";
+	public static final String HEADER_IS_UNIQUE = "is_unique";
+	public static final String HEADER_IS_NULLABLE = "is_nullable";
+	
+	//boolean strings
+	public static final String FALSE = "NO";
+	public static final String TRUE = "TRUE";
+	
+	private Constants(){
+		throw new AssertionError();
+	}
 }

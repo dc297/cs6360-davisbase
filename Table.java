@@ -27,7 +27,7 @@ public class Table{
 			delete(Constants.TABLE_CATALOG, new String[] {"table_name", "=", table}, Constants.dirCatalog);
 			delete(Constants.COLUMN_CATALOG, new String[] {"table_name", "=", table}, Constants.dirCatalog);
 
-			File oldFile = new File(Constants.dirUserdata, table+".tbl"); 
+			File oldFile = new File(Constants.dirUserdata, table+Constants.FILE_TYPE); 
 			oldFile.delete();
 			
 		}catch(Exception e){
@@ -51,7 +51,7 @@ public class Table{
 			
 			for(int rowId : rowIds) {
 				//open the file for table
-				RandomAccessFile file = new RandomAccessFile(dir+table+".tbl", "rw");
+				RandomAccessFile file = new RandomAccessFile(dir+table+Constants.FILE_TYPE, "rw");
 				int numPages = getPageCount(file);
 				int page = 0;
 				
@@ -204,7 +204,7 @@ public class Table{
 			
 			
 			//create a file for the new table
-			RandomAccessFile file = new RandomAccessFile(Constants.dirUserdata+table+".tbl", "rw");
+			RandomAccessFile file = new RandomAccessFile(Constants.dirUserdata+table+Constants.FILE_TYPE, "rw");
 			file.setLength(Constants.pageSize);
 			file.seek(0);
 			file.writeByte(Constants.recordsPage);
@@ -255,7 +255,7 @@ public class Table{
 				rowids.add(Integer.parseInt(cmp[2]));
 			
 			for(int key : rowids) {
-				RandomAccessFile file = new RandomAccessFile(dir+table+".tbl", "rw");
+				RandomAccessFile file = new RandomAccessFile(dir+table+Constants.FILE_TYPE, "rw");
 				int numPages = getPageCount(file);
 				
 				//iterate over all the pages to check which page contains our key
@@ -331,7 +331,7 @@ public class Table{
 
 	public static void insertInto(String table, String[] values,String dir_s){
 		try{
-			RandomAccessFile file = new RandomAccessFile(dir_s + table+".tbl", "rw");
+			RandomAccessFile file = new RandomAccessFile(dir_s + table+Constants.FILE_TYPE, "rw");
 			insertInto(file, table, values);
 			file.close();
 
@@ -558,7 +558,11 @@ public class Table{
 	public static String[] getDavisbaseColumnsColumn(int i, String table){
 		try{
 			//fetch the data from davisbase_columns
-			Records records = select(Constants.COLUMN_CATALOG, new String[] {"*"}, new String[] {"table_name", "=", table}, false);
+			RandomAccessFile file = new RandomAccessFile(Constants.dirCatalog+"davisbase_columns.tbl", "rw");
+			Records records = new Records();
+			String[] columnName = {"rowid", "table_name", "column_name", "data_type", "ordinal_position", "is_nullable","is_unique"};
+			String[] cmp = {"table_name","=",table};
+			filter(file, cmp, columnName,new String[] {}, records);
 
 			//save the result
 			HashMap<Integer, String[]> content = records.content;
@@ -569,7 +573,7 @@ public class Table{
 				array.add(x[i]);
 			}
 
-			return (String[])array.toArray();
+			return array.toArray(new String[array.size()]);
 			
 		}
 		catch(Exception e){
@@ -587,7 +591,7 @@ public class Table{
 				path = Constants.dirCatalog ;
 			
 			
-			RandomAccessFile file = new RandomAccessFile(path+table+".tbl", "rw");
+			RandomAccessFile file = new RandomAccessFile(path+table+Constants.FILE_TYPE, "rw");
 			
 			//get column names and data types
 			String[] columnName = getColName(table);
@@ -703,17 +707,17 @@ public class Table{
 				
 				//check different condition
 				switch(operator){
-					case "=": 
+					case Constants.EQUALS_SIGN: 
 						return rowid == val;
-					case ">": 
+					case Constants.GREATER_THAN_SIGN: 
 						return rowid > val;
-					case ">=": 
+					case Constants.GREATER_THAN_EQUAL_SIGN: 
 						return rowid >= val;
-					case "<": 
+					case Constants.LESS_THAN_SIGN: 
 						return rowid < val;
-					case "<=": 
+					case Constants.LESS_THAN_EQUAL_SIGN: 
 						return rowid <= val;
-					case "!=": 
+					case Constants.NOT_EQUAL_SIGN: 
 						return rowid != val;						  							  							  							
 				}
 			}
@@ -728,10 +732,10 @@ public class Table{
 		try{
 			String path = Constants.dirUserdata ;
 			
-			RandomAccessFile file = new RandomAccessFile(path+table+".tbl", "rw");
+			RandomAccessFile file = new RandomAccessFile(path+table+Constants.FILE_TYPE, "rw");
 			String[] columnName = getColName(table);
 			
-			BTree b = new BTree(new RandomAccessFile(path+table+".ndx", "rw"));
+			BTree b = new BTree(new RandomAccessFile(path+table+Constants.INDEX_FILE_TYPE, "rw"));
 			
 			int control=0; // = new int[cols.length];
 			for(int j = 0; j < cols.length; j++)
